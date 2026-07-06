@@ -56,8 +56,7 @@ function Settings({ settings, setSettings }) {
     }
 
     if (typeof window !== 'undefined') {
-      window.location.assign(`${apiBaseUrl}/shopify/install?shop=${encodeURIComponent(shop)}`)
-    }
+    window.location.assign(`https://irishpokescanner.onrender.com/api/shopify/install?shop=${encodeURIComponent(shop)}`)
   }
 
   return (
