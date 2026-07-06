@@ -8,7 +8,7 @@ import {
 } from '../services/localProducts'
 import { sellProductViaBackend } from '../services/backend'
 
-function Scan({ sales, setSales, settings }) {
+function Scan({ setSales, settings }) {
   const [scannedSku, setScannedSku] = useState('')
   const [scanActive, setScanActive] = useState(true)
   const [product, setProduct] = useState(null)
@@ -20,6 +20,10 @@ function Scan({ sales, setSales, settings }) {
   const [saleComplete, setSaleComplete] = useState(false)
   const [lastSoldSku, setLastSoldSku] = useState('')
   const [lastSale, setLastSale] = useState(null)
+
+  useEffect(() => {
+    setLocalProducts(loadLocalProducts())
+  }, [])
 
   useEffect(() => {
     if (!scanActive) {
@@ -56,8 +60,9 @@ function Scan({ sales, setSales, settings }) {
         const matchedProduct = findLocalProductBySku(localProducts, normalizedSku)
 
         if (matchedProduct) {
+          const displayName = matchedProduct.cardName || matchedProduct.name || matchedProduct.title || 'Untitled Card'
           setProduct({
-            title: matchedProduct.cardName,
+            title: displayName,
             image: matchedProduct.imageUrl,
             price: matchedProduct.price,
             inventory: matchedProduct.inventoryQuantity,
@@ -65,7 +70,7 @@ function Scan({ sales, setSales, settings }) {
             variantId: matchedProduct.variantId,
             inventoryItemId: matchedProduct.inventoryItemId,
           })
-          setStatusMessage(`Found ${matchedProduct.cardName}`)
+          setStatusMessage(`Found ${displayName}`)
         } else {
           setProduct(null)
           setStatusMessage('No matching locally synced product was found for this SKU.')

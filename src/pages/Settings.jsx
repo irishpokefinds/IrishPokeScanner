@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 function Settings({ settings, setSettings }) {
   const [form, setForm] = useState(settings)
   const [message, setMessage] = useState('Your settings stay on this device for now.')
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').trim().replace(/\/$/, '') || '/api'
 
   useEffect(() => {
     setForm(settings)
@@ -55,7 +56,7 @@ function Settings({ settings, setSettings }) {
     }
 
     if (typeof window !== 'undefined') {
-      window.location.assign(`http://localhost:3001/api/shopify/install?shop=${encodeURIComponent(shop)}`)
+      window.location.assign(`${apiBaseUrl}/shopify/install?shop=${encodeURIComponent(shop)}`)
     }
   }
 

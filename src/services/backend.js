@@ -1,4 +1,5 @@
-const API_BASE_URL = 'http://localhost:3001/api'
+const configuredBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').trim().replace(/\/$/, '')
+const API_BASE_URL = configuredBaseUrl || '/api'
 
 export async function fetchProductsFromBackend() {
   const response = await fetch(`${API_BASE_URL}/products`)

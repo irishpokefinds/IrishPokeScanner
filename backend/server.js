@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
 import fs from 'fs'
@@ -8,18 +9,18 @@ import path from 'path'
 dotenv.config()
 
 const app = express()
-const PORT = process.env.PORT || 3001
+const PORT = Number(process.env.PORT || 3001)
 const SHOPIFY_API_VERSION = '2024-10'
 const SHOPIFY_TEST_API_VERSION = '2025-01'
 const SHOPIFY_SCOPES = 'read_products,read_inventory,write_inventory,read_locations'
-const FRONTEND_URL = 'http://localhost:5173'
-const BACKEND_URL = 'https://irishpokescanner.onrender.com'
 const persistedConfigPath = path.join(process.cwd(), '.shopify-config.json')
 const runtimeShopifyConfig = loadPersistedShopifyConfig()
-const oauthStateStore = new Map()
+const cookieSecret = process.env.SHOPIFY_OAUTH_COOKIE_SECRET?.trim() || process.env.COOKIE_SECRET?.trim() || 'dev-shopify-oauth-cookie-secret'
 
+app.set('trust proxy', 1)
 app.use(cors({ origin: true }))
 app.use(express.json())
+app.use(cookieParser(cookieSecret))
 
 app.use((error, _req, res, next) => {
   if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
@@ -29,7 +30,7 @@ app.use((error, _req, res, next) => {
   return next(error)
 })
 
-function normalizeStoreUrl(storeUrl) {
+export function normalizeStoreUrl(storeUrl) {
   if (!storeUrl) {
     return ''
   }
@@ -43,7 +44,7 @@ function normalizeStoreUrl(storeUrl) {
   return `https://${trimmedStoreUrl}`
 }
 
-function normalizeShopDomain(shop) {
+export function normalizeShopDomain(shop) {
   if (!shop) {
     return ''
   }
@@ -52,7 +53,7 @@ function normalizeShopDomain(shop) {
   return trimmedShop.split('/')[0]
 }
 
-function isPlaceholderValue(value) {
+export function isPlaceholderValue(value) {
   if (typeof value !== 'string') {
     return false
   }
@@ -82,14 +83,49 @@ function loadPersistedShopifyConfig() {
 
 function persistShopifyConfig() {
   try {
-    fs.writeFileSync(persistedConfigPath, JSON.stringify(runtimeShopifyConfig, null, 2))
+    fs.writeFileSync(persistedConfigPath, JSON.stringify(runtimeShopifyConfig, null, 2), { mode: 0o600 })
+    fs.chmodSync(persistedConfigPath, 0o600)
   } catch (error) {
     console.error('Unable to persist Shopify config:', error.message)
   }
 }
 
-function buildRedirectTarget(pathname) {
-  return `${FRONTEND_URL}${pathname}`
+function resolvePublicBaseUrl(req, fallback) {
+  const configuredUrl = (process.env.APP_URL || process.env.FRONTEND_URL || process.env.PUBLIC_APP_URL || '').trim()
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, '')
+  }
+
+  const forwardedProto = Array.isArray(req.headers['x-forwarded-proto'])
+    ? req.headers['x-forwarded-proto'][0]
+    : req.headers['x-forwarded-proto']
+  const forwardedHost = req.headers['x-forwarded-host'] || req.headers.host
+
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+
+  if (forwardedHost) {
+    return `https://${forwardedHost}`
+  }
+
+  return fallback.replace(/\/+$/, '')
+}
+
+function resolveBackendBaseUrl(req) {
+  const configuredUrl = (process.env.BACKEND_URL || process.env.PUBLIC_BACKEND_URL || '').trim()
+
+  if (configuredUrl) {
+    return configuredUrl.replace(/\/+$/, '')
+  }
+
+  return resolvePublicBaseUrl(req, `http://localhost:${PORT}`)
+}
+
+function buildRedirectTarget(pathname, req) {
+  const frontendBaseUrl = resolvePublicBaseUrl(req, process.env.APP_URL || process.env.FRONTEND_URL || 'http://localhost:5173')
+  return `${frontendBaseUrl}${pathname.startsWith('/') ? pathname : `/${pathname}`}`
 }
 
 function getShopifyConfig() {
@@ -127,12 +163,13 @@ function getShopifyHeaders() {
   }
 }
 
-function buildProductPayload(product, variant) {
+export function buildProductPayload(product, variant) {
   return {
     productId: product.id,
     variantId: variant.id,
     inventoryItemId: variant.inventory_item_id,
     sku: variant.sku || '',
+    name: product.title || '',
     title: product.title || '',
     price: variant.price || '0',
     inventoryQuantity: variant.inventory_quantity ?? 0,
@@ -141,17 +178,28 @@ function buildProductPayload(product, variant) {
   }
 }
 
+export function buildShopifyOAuthCookieOptions(req = {}) {
+  const secure = Boolean(
+    req.secure
+    || req.protocol === 'https'
+    || (req.headers?.['x-forwarded-proto'] && String(req.headers['x-forwarded-proto']).split(',')[0].trim() === 'https')
+    || process.env.NODE_ENV === 'production'
+  )
+
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure,
+    signed: true,
+    path: '/',
+  }
+}
+
 async function fetchShopifyJson(url, options = {}) {
   const response = await fetch(url, options)
 
   if (!response.ok) {
-    let responseBody = ''
-
-    try {
-      responseBody = await response.text()
-    } catch {
-      responseBody = ''
-    }
+    const responseBody = await response.text().catch(() => '')
 
     console.error('[Shopify API Error]', {
       statusCode: response.status,
@@ -163,7 +211,7 @@ async function fetchShopifyJson(url, options = {}) {
   return response
 }
 
-function verifyShopifyHmac(params, secret) {
+export function verifyShopifyHmac(params, secret) {
   const { hmac, ...rest } = params
 
   if (!hmac || !secret) {
@@ -176,7 +224,54 @@ function verifyShopifyHmac(params, secret) {
 
   const message = sortedEntries.map(([key, value]) => `${key}=${value}`).join('&')
   const expectedHmac = crypto.createHmac('sha256', secret).update(message).digest('hex')
-  return crypto.timingSafeEqual(Buffer.from(expectedHmac), Buffer.from(hmac))
+  return crypto.timingSafeEqual(Buffer.from(expectedHmac, 'hex'), Buffer.from(String(hmac), 'hex'))
+}
+
+async function fetchAllActiveProducts() {
+  const headers = getShopifyHeaders()
+  const baseUrl = getShopifyBaseUrl()
+  const products = []
+  let page = 1
+  let sinceId = 0
+
+  while (page <= 20) {
+    const query = new URLSearchParams({
+      limit: '250',
+      status: 'active',
+      published_status: 'published',
+      fields: 'id,title,handle,status,images,variants',
+    })
+
+    if (sinceId > 0) {
+      query.set('since_id', String(sinceId))
+    }
+
+    const response = await fetchShopifyJson(`${baseUrl}/admin/api/${SHOPIFY_API_VERSION}/products.json?${query.toString()}`, {
+      method: 'GET',
+      headers,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Shopify request failed with ${response.status}`)
+    }
+
+    const payload = await response.json()
+    const fetchedProducts = Array.isArray(payload.products) ? payload.products : []
+
+    if (!fetchedProducts.length) {
+      break
+    }
+
+    products.push(...fetchedProducts)
+    sinceId = fetchedProducts[fetchedProducts.length - 1]?.id || sinceId
+    if (fetchedProducts.length < 250) {
+      break
+    }
+
+    page += 1
+  }
+
+  return products
 }
 
 app.post('/api/shopify/config', (req, res) => {
@@ -193,8 +288,8 @@ app.post('/api/shopify/config', (req, res) => {
   return res.json({ success: true, shopifyConfigured: true })
 })
 
-app.get('/api/shopify/install', (_req, res) => {
-  const shop = normalizeShopDomain(_req.query.shop)
+app.get('/api/shopify/install', (req, res) => {
+  const shop = normalizeShopDomain(req.query.shop)
   const apiKey = process.env.SHOPIFY_API_KEY?.trim()
   const apiSecret = process.env.SHOPIFY_API_SECRET?.trim()
 
@@ -207,26 +302,35 @@ app.get('/api/shopify/install', (_req, res) => {
   }
 
   const state = crypto.randomBytes(16).toString('hex')
-  oauthStateStore.set(state, { shop, createdAt: Date.now() })
-  const redirectUri = encodeURIComponent(`${BACKEND_URL}/api/shopify/callback`)
+  const cookieOptions = buildShopifyOAuthCookieOptions(req)
+  res.cookie('shopify_oauth_state', state, { ...cookieOptions })
+  res.cookie('shopify_oauth_shop', shop, { ...cookieOptions })
+
+  const redirectUri = encodeURIComponent(`${resolveBackendBaseUrl(req)}/api/shopify/callback`)
   const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${encodeURIComponent(apiKey)}&scope=${encodeURIComponent(SHOPIFY_SCOPES)}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}`
 
   return res.redirect(installUrl)
 })
 
 app.get('/api/shopify/callback', async (req, res) => {
-  const { shop, code, state, hmac } = req.query
   const apiKey = process.env.SHOPIFY_API_KEY?.trim()
   const apiSecret = process.env.SHOPIFY_API_SECRET?.trim()
+  const state = Array.isArray(req.query.state) ? req.query.state[0] : req.query.state
+  const shop = Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop
+  const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code
   const normalizedShop = normalizeShopDomain(shop)
-  const stateRecord = oauthStateStore.get(state)
+  const signedState = req.signedCookies?.shopify_oauth_state
+  const signedShop = req.signedCookies?.shopify_oauth_shop
+  const cookieOptions = buildShopifyOAuthCookieOptions(req)
 
-  if (!normalizedShop || !code || !state || !stateRecord || stateRecord.shop !== normalizedShop) {
-    return res.redirect(`${buildRedirectTarget('/settings')}?shopify=error&message=${encodeURIComponent('Invalid OAuth state.')}`)
+  if (!normalizedShop || !code || !state || !signedState || !signedShop || state !== signedState || normalizedShop !== normalizeShopDomain(signedShop)) {
+    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=error&message=${encodeURIComponent('Invalid OAuth state.')}`)
   }
 
   if (!verifyShopifyHmac(req.query, apiSecret)) {
-    return res.redirect(`${buildRedirectTarget('/settings')}?shopify=error&message=${encodeURIComponent('Invalid Shopify HMAC.')}`)
+    res.clearCookie('shopify_oauth_state', cookieOptions)
+    res.clearCookie('shopify_oauth_shop', cookieOptions)
+    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=error&message=${encodeURIComponent('Invalid Shopify HMAC.')}`)
   }
 
   try {
@@ -257,12 +361,16 @@ app.get('/api/shopify/callback', async (req, res) => {
     runtimeShopifyConfig.shop = normalizedShop
     runtimeShopifyConfig.accessToken = accessToken
     persistShopifyConfig()
-    oauthStateStore.delete(state)
 
-    return res.redirect(`${buildRedirectTarget('/settings')}?shopify=connected`)
+    res.clearCookie('shopify_oauth_state', cookieOptions)
+    res.clearCookie('shopify_oauth_shop', cookieOptions)
+
+    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=connected`)
   } catch (error) {
     console.error('Shopify OAuth callback failed:', error.message)
-    return res.redirect(`${buildRedirectTarget('/settings')}?shopify=error&message=${encodeURIComponent(error.message)}`)
+    res.clearCookie('shopify_oauth_state', cookieOptions)
+    res.clearCookie('shopify_oauth_shop', cookieOptions)
+    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=error&message=${encodeURIComponent(error.message)}`)
   }
 })
 
@@ -333,19 +441,8 @@ app.get('/api/test-shopify', async (_req, res) => {
 
 app.get('/api/products', async (_req, res) => {
   try {
-    const baseUrl = getShopifyBaseUrl()
-    const headers = getShopifyHeaders()
-    const response = await fetchShopifyJson(`${baseUrl}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250&fields=id,title,handle,images,variants`, {
-      method: 'GET',
-      headers,
-    })
-
-    if (!response.ok) {
-      throw new Error(`Shopify request failed with ${response.status}`)
-    }
-
-    const payload = await response.json()
-    const normalizedProducts = (payload.products || [])
+    const products = await fetchAllActiveProducts()
+    const normalizedProducts = products
       .filter((product) => product?.status !== 'draft')
       .flatMap((product) => {
         const variants = product.variants || []
@@ -372,17 +469,7 @@ app.post('/api/sell', async (req, res) => {
 
     const baseUrl = getShopifyBaseUrl()
     const headers = getShopifyHeaders()
-    const productsResponse = await fetchShopifyJson(`${baseUrl}/admin/api/${SHOPIFY_API_VERSION}/products.json?limit=250&fields=id,title,handle,images,variants`, {
-      method: 'GET',
-      headers,
-    })
-
-    if (!productsResponse.ok) {
-      throw new Error(`Product fetch failed with ${productsResponse.status}`)
-    }
-
-    const productPayload = await productsResponse.json()
-    const products = productPayload.products || []
+    const products = await fetchAllActiveProducts()
     let matchedVariant = null
     let matchedProduct = null
 
@@ -437,12 +524,15 @@ app.post('/api/sell', async (req, res) => {
   }
 })
 
-const { isConfigured } = getShopifyConfig()
+export { app }
 
-app.listen(PORT, () => {
-  console.log(`Irish Poké backend running on port ${PORT}`)
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Irish Poké backend running on port ${PORT}`)
 
-  if (!isConfigured) {
-    console.warn('Shopify app not installed yet. Start the OAuth install flow from Settings.')
-  }
-})
+    const { isConfigured } = getShopifyConfig()
+    if (!isConfigured) {
+      console.warn('Shopify app not installed yet. Start the OAuth install flow from Settings.')
+    }
+  })
+}

@@ -4,7 +4,7 @@ import { fetchProductsFromBackend } from '../services/backend'
 const STORAGE_KEY = 'irish-poke-products'
 const LAST_SYNC_KEY = 'irish-poke-last-sync'
 
-function SyncProducts({ settings }) {
+function SyncProducts() {
   const [products, setProducts] = useState(() => {
     if (typeof window === 'undefined') {
       return []
@@ -46,7 +46,9 @@ function SyncProducts({ settings }) {
     return products.filter((product) => {
       return (
         product.sku?.toLowerCase().includes(query) ||
-        product.cardName?.toLowerCase().includes(query)
+        product.cardName?.toLowerCase().includes(query) ||
+        product.name?.toLowerCase().includes(query) ||
+        product.handle?.toLowerCase().includes(query)
       )
     })
   }, [products, searchQuery])
@@ -65,7 +67,9 @@ function SyncProducts({ settings }) {
         variantId: product.variantId,
         inventoryItemId: product.inventoryItemId,
         sku: product.sku || '',
-        cardName: product.title || '',
+        cardName: product.name || product.title || '',
+        name: product.name || product.title || '',
+        title: product.title || '',
         price: product.price || '0',
         inventoryQuantity: product.inventoryQuantity ?? 0,
         imageUrl: product.imageUrl || '',
