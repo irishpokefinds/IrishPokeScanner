@@ -204,7 +204,11 @@ export function verifyShopifyOAuthState(state, shop, secret, now = Date.now()) {
   }
 
   const expectedSignature = crypto.createHmac('sha256', secret).update(encodedPayload).digest('hex')
-  if (!crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(signature, 'hex'))) {
+  if (typeof signature !== 'string' || signature.length !== expectedSignature.length) {
+    return false
+  }
+
+  if (!crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature))) {
     return false
   }
 
