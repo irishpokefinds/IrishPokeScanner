@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 
 process.env.NODE_ENV = 'test'
 
-const { buildProductPayload, buildShopifyOAuthCookieOptions, normalizeShopDomain, normalizeStoreUrl, verifyShopifyHmac } = await import('../server.js')
+const { buildProductPayload, buildShopifyOAuthState, normalizeShopDomain, normalizeStoreUrl, verifyShopifyHmac, verifyShopifyOAuthState } = await import('../server.js')
 
 test('normalizeShopDomain strips scheme and trailing slashes', () => {
   assert.equal(normalizeShopDomain('https://demo-store.myshopify.com/'), 'demo-store.myshopify.com')
@@ -58,16 +58,12 @@ test('verifyShopifyHmac validates signed query values', () => {
   assert.equal(verifyShopifyHmac({ ...params, hmac }, secret), true)
 })
 
-test('buildShopifyOAuthCookieOptions uses secure httpOnly cookies for HTTPS requests', () => {
-  const options = buildShopifyOAuthCookieOptions({
-    secure: true,
-    headers: {
-      'x-forwarded-proto': 'https',
-    },
-  })
+test('signed Shopify OAuth state is valid for matching shops and recent timestamps', () => {
+  const secret = 'super-secret'
+  const issuedAt = 1_700_000_000_000
+  const state = buildShopifyOAuthState({ shop: 'demo-store.myshopify.com', issuedAt }, secret)
 
-  assert.equal(options.httpOnly, true)
-  assert.equal(options.sameSite, 'lax')
-  assert.equal(options.secure, true)
-  assert.equal(options.signed, true)
+  assert.equal(verifyShopifyOAuthState(state, 'demo-store.myshopify.com', secret, issuedAt + 60_000), true)
+  assert.equal(verifyShopifyOAuthState(state, 'different-store.myshopify.com', secret, issuedAt + 60_000), false)
+  assert.equal(verifyShopifyOAuthState(state, 'demo-store.myshopify.com', secret, issuedAt + 11 * 60_000), false)
 })

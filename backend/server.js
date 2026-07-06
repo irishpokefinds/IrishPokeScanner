@@ -1,6 +1,5 @@
 import express from 'express'
 import cors from 'cors'
-import cookieParser from 'cookie-parser'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
 import fs from 'fs'
@@ -15,12 +14,9 @@ const SHOPIFY_TEST_API_VERSION = '2025-01'
 const SHOPIFY_SCOPES = 'read_products,read_inventory,write_inventory,read_locations'
 const persistedConfigPath = path.join(process.cwd(), '.shopify-config.json')
 const runtimeShopifyConfig = loadPersistedShopifyConfig()
-const cookieSecret = process.env.SHOPIFY_OAUTH_COOKIE_SECRET?.trim() || process.env.COOKIE_SECRET?.trim() || 'dev-shopify-oauth-cookie-secret'
 
-app.set('trust proxy', 1)
 app.use(cors({ origin: true }))
 app.use(express.json())
-app.use(cookieParser(cookieSecret))
 
 app.use((error, _req, res, next) => {
   if (error instanceof SyntaxError && error.status === 400 && 'body' in error) {
@@ -178,21 +174,56 @@ export function buildProductPayload(product, variant) {
   }
 }
 
-export function buildShopifyOAuthCookieOptions(req = {}) {
-  const secure = Boolean(
-    req.secure
-    || req.protocol === 'https'
-    || (req.headers?.['x-forwarded-proto'] && String(req.headers['x-forwarded-proto']).split(',')[0].trim() === 'https')
-    || process.env.NODE_ENV === 'production'
-  )
-
-  return {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure,
-    signed: true,
-    path: '/',
+export function buildShopifyOAuthState(payload, secret) {
+  const timestamp = Number(payload?.timestamp ?? payload?.issuedAt ?? payload?.issued_at ?? Date.now())
+  const normalizedPayload = {
+    shop: normalizeShopDomain(payload?.shop),
+    timestamp,
   }
+  const encodedPayload = Buffer.from(JSON.stringify(normalizedPayload)).toString('base64url')
+  const signature = crypto.createHmac('sha256', secret).update(encodedPayload).digest('hex')
+  const signedState = `${encodedPayload}.${signature}`
+  return Buffer.from(signedState, 'utf8').toString('base64url')
+}
+
+export function verifyShopifyOAuthState(state, shop, secret, now = Date.now()) {
+  if (!state || typeof state !== 'string') {
+    return false
+  }
+
+  let signedState
+  try {
+    signedState = Buffer.from(state, 'base64url').toString('utf8')
+  } catch {
+    return false
+  }
+
+  const [encodedPayload, signature] = signedState.split('.')
+  if (!encodedPayload || !signature) {
+    return false
+  }
+
+  const expectedSignature = crypto.createHmac('sha256', secret).update(encodedPayload).digest('hex')
+  if (!crypto.timingSafeEqual(Buffer.from(expectedSignature, 'hex'), Buffer.from(signature, 'hex'))) {
+    return false
+  }
+
+  let payload
+  try {
+    payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'))
+  } catch {
+    return false
+  }
+
+  const normalizedShop = normalizeShopDomain(shop)
+  const normalizedPayloadShop = normalizeShopDomain(payload?.shop)
+  const timestamp = Number(payload?.timestamp)
+
+  if (!normalizedPayloadShop || normalizedPayloadShop !== normalizedShop) {
+    return false
+  }
+
+  return Number.isFinite(timestamp) && now - timestamp <= 10 * 60 * 1000
 }
 
 async function fetchShopifyJson(url, options = {}) {
@@ -301,11 +332,7 @@ app.get('/api/shopify/install', (req, res) => {
     return res.status(500).send('Shopify API key and secret are missing from backend/.env')
   }
 
-  const state = crypto.randomBytes(16).toString('hex')
-  const cookieOptions = buildShopifyOAuthCookieOptions(req)
-  res.cookie('shopify_oauth_state', state, { ...cookieOptions })
-  res.cookie('shopify_oauth_shop', shop, { ...cookieOptions })
-
+  const state = buildShopifyOAuthState({ shop, timestamp: Date.now() }, apiSecret)
   const redirectUri = encodeURIComponent(`${resolveBackendBaseUrl(req)}/api/shopify/callback`)
   const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${encodeURIComponent(apiKey)}&scope=${encodeURIComponent(SHOPIFY_SCOPES)}&redirect_uri=${redirectUri}&state=${encodeURIComponent(state)}`
 
@@ -319,18 +346,13 @@ app.get('/api/shopify/callback', async (req, res) => {
   const shop = Array.isArray(req.query.shop) ? req.query.shop[0] : req.query.shop
   const code = Array.isArray(req.query.code) ? req.query.code[0] : req.query.code
   const normalizedShop = normalizeShopDomain(shop)
-  const signedState = req.signedCookies?.shopify_oauth_state
-  const signedShop = req.signedCookies?.shopify_oauth_shop
-  const cookieOptions = buildShopifyOAuthCookieOptions(req)
 
-  if (!normalizedShop || !code || !state || !signedState || !signedShop || state !== signedState || normalizedShop !== normalizeShopDomain(signedShop)) {
-    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=error&message=${encodeURIComponent('Invalid OAuth state.')}`)
+  if (!normalizedShop || !code || !state || !verifyShopifyOAuthState(state, normalizedShop, apiSecret)) {
+    return res.redirect(`http://localhost:5173/settings?shopify=error&message=${encodeURIComponent('Invalid OAuth state.')}`)
   }
 
   if (!verifyShopifyHmac(req.query, apiSecret)) {
-    res.clearCookie('shopify_oauth_state', cookieOptions)
-    res.clearCookie('shopify_oauth_shop', cookieOptions)
-    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=error&message=${encodeURIComponent('Invalid Shopify HMAC.')}`)
+    return res.redirect(`http://localhost:5173/settings?shopify=error&message=${encodeURIComponent('Invalid Shopify HMAC.')}`)
   }
 
   try {
@@ -362,15 +384,10 @@ app.get('/api/shopify/callback', async (req, res) => {
     runtimeShopifyConfig.accessToken = accessToken
     persistShopifyConfig()
 
-    res.clearCookie('shopify_oauth_state', cookieOptions)
-    res.clearCookie('shopify_oauth_shop', cookieOptions)
-
-    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=connected`)
+    return res.redirect('http://localhost:5173/settings?shopify=connected')
   } catch (error) {
     console.error('Shopify OAuth callback failed:', error.message)
-    res.clearCookie('shopify_oauth_state', cookieOptions)
-    res.clearCookie('shopify_oauth_shop', cookieOptions)
-    return res.redirect(`${buildRedirectTarget('/settings', req)}?shopify=error&message=${encodeURIComponent(error.message)}`)
+    return res.redirect(`http://localhost:5173/settings?shopify=error&message=${encodeURIComponent(error.message)}`)
   }
 })
 
