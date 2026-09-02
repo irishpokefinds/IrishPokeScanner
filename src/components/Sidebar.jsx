@@ -1,11 +1,12 @@
 import { NavLink } from 'react-router-dom'
+import logo from '../assets/scanner-logo.png'
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: '◉' },
-  { to: '/scan', label: 'Scan Card', icon: '◎' },
-  { to: '/generate', label: 'Generate QR', icon: '◌' },
-  { to: '/sync-products', label: 'Sync Products', icon: '◐' },
-  { to: '/sales', label: 'Sales History', icon: '◍' },
+  { to: '/', label: 'Dashboard', icon: '⌂' },
+  { to: '/scan', label: 'Scan', icon: '▥' },
+  { to: '/generate', label: 'Generate QR', icon: '▦' },
+  { to: '/sync-products', label: 'Products', icon: '↻' },
+  { to: '/sales', label: 'Recent Sales', icon: '◷' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ]
 
@@ -13,11 +14,7 @@ function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="brand-block">
-        <div className="brand-mark">IP</div>
-        <div>
-          <p className="brand-name">Irish Poké Finds</p>
-          <p className="brand-subtitle">Scanner Dashboard</p>
-        </div>
+        <img className="brand-logo" src={logo} alt="Irish Poké Finds Scanner" />
       </div>
 
       <nav className="nav-links" aria-label="Primary navigation">
@@ -34,8 +31,9 @@ function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <p>Ready for Shopify sync</p>
-        <span>Live inventory workflow</span>
+        <div className="user-avatar">●</div>
+        <div><p>Irish Poké Finds</p><span>Scanner online</span></div>
+        <b>›</b>
       </div>
     </aside>
   )

@@ -74,11 +74,14 @@ function App() {
 
         <main className="main-content">
           <header className="topbar">
-            <div>
-              <p className="eyebrow">Event Operations</p>
-              <h1>Irish Poké Finds Scanner</h1>
-            </div>
-            <div className="status-pill">{settings.eventName || 'Ready to scan'}</div>
+            <div className="topbar-spacer" />
+            <nav className="quick-actions" aria-label="Quick actions">
+              <a className="quick-action" href="/scan"><span>⌕</span> Quick Lookup</a>
+              <a className="quick-action" href="/sales"><span>🛒</span> Sales</a>
+              <div className="profile-dot" aria-label={settings.eventName || 'Event mode'}>
+                <span>●</span>
+              </div>
+            </nav>
           </header>
 
           <Routes>

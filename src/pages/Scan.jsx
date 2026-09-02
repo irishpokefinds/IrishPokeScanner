@@ -198,7 +198,7 @@ function Scan({ setSales, settings }) {
                   </div>
                   <div style={styles.detailRow}>
                     <span style={styles.label}>Price</span>
-                    <span style={styles.valueMuted}>{product ? `$${product.price}` : 'Pending'}</span>
+                    <span style={styles.valueMuted}>{product ? `€${product.price}` : 'Pending'}</span>
                   </div>
                   <div style={styles.detailRow}>
                     <span style={styles.label}>Inventory</span>
@@ -245,7 +245,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '16px',
-    color: '#f9efc8',
+    color: '#f5fbff',
   },
   headerRow: {
     display: 'flex',
@@ -259,17 +259,17 @@ const styles = {
     fontSize: '0.74rem',
     textTransform: 'uppercase',
     letterSpacing: '0.24em',
-    color: '#d9b24e',
+    color: '#18d9ff',
   },
   title: {
     margin: 0,
     fontSize: 'clamp(1.2rem, 2.4vw, 1.6rem)',
-    color: '#fff4c8',
+    color: '#f5fbff',
   },
   badge: {
-    border: '1px solid rgba(217, 178, 78, 0.3)',
-    background: 'rgba(217, 178, 78, 0.12)',
-    color: '#ffd667',
+    border: '1px solid rgba(0, 202, 255, 0.4)',
+    background: 'rgba(0, 202, 255, 0.1)',
+    color: '#18d9ff',
     padding: '8px 12px',
     borderRadius: '999px',
     fontSize: '0.9rem',
@@ -280,8 +280,8 @@ const styles = {
     gap: '16px',
   },
   cameraPanel: {
-    border: '1px solid rgba(217, 178, 78, 0.2)',
-    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(0, 202, 255, 0.3)',
+    background: 'rgba(3,18,31,0.9)',
     borderRadius: '20px',
     padding: '14px',
     boxShadow: '0 10px 24px rgba(0,0,0,0.2)',
@@ -289,17 +289,17 @@ const styles = {
   readerFrame: {
     minHeight: '280px',
     borderRadius: '16px',
-    background: 'linear-gradient(135deg, #0f0f0f, #1a1406)',
-    border: '1px solid rgba(217,178,78,0.2)',
+    background: 'linear-gradient(135deg, #010811, #03233a)',
+    border: '1px solid rgba(0,202,255,0.3)',
     overflow: 'hidden',
   },
   helperText: {
     margin: '10px 2px 0',
-    color: '#c6b26b',
+    color: '#8faec3',
   },
   resultPanel: {
-    border: '1px solid rgba(217, 178, 78, 0.2)',
-    background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(0, 202, 255, 0.3)',
+    background: 'rgba(3,18,31,0.9)',
     borderRadius: '20px',
     padding: '14px',
     boxShadow: '0 10px 24px rgba(0,0,0,0.2)',
@@ -312,7 +312,7 @@ const styles = {
   imageFrame: {
     minHeight: '150px',
     borderRadius: '16px',
-    border: '1px dashed rgba(217, 178, 78, 0.38)',
+    border: '1px dashed rgba(0, 202, 255, 0.38)',
     background: 'rgba(0,0,0,0.2)',
     display: 'flex',
     alignItems: 'center',
@@ -325,7 +325,7 @@ const styles = {
     objectFit: 'cover',
   },
   imagePlaceholderText: {
-    color: '#d3b959',
+    color: '#18d9ff',
     fontWeight: 600,
     letterSpacing: '0.04em',
     textTransform: 'uppercase',
@@ -341,18 +341,18 @@ const styles = {
     alignItems: 'center',
     gap: '12px',
     paddingBottom: '8px',
-    borderBottom: '1px solid rgba(217,178,78,0.16)',
+    borderBottom: '1px solid rgba(0,202,255,0.16)',
   },
   label: {
-    color: '#ccac51',
+    color: '#18d9ff',
     fontSize: '0.92rem',
   },
   value: {
-    color: '#fff3c0',
+    color: '#f5fbff',
     textAlign: 'right',
   },
   valueMuted: {
-    color: '#c2b06f',
+    color: '#8faec3',
     textAlign: 'right',
   },
   buttonRow: {
@@ -368,7 +368,7 @@ const styles = {
     fontSize: '1rem',
     fontWeight: 700,
     color: '#0d0900',
-    background: 'linear-gradient(135deg, #3f9d4f, #236b32)',
+    background: 'linear-gradient(135deg, #00a9c6, #23d879)',
     cursor: 'pointer',
   },
   cancelButton: {
@@ -382,17 +382,17 @@ const styles = {
     cursor: 'pointer',
   },
   undoButton: {
-    border: '1px solid rgba(217, 178, 78, 0.24)',
+    border: '1px solid rgba(0, 202, 255, 0.28)',
     borderRadius: '14px',
     padding: '14px 16px',
     fontSize: '1rem',
     fontWeight: 700,
-    color: '#fff3c0',
-    background: 'rgba(217, 178, 78, 0.12)',
+    color: '#f5fbff',
+    background: 'rgba(0, 202, 255, 0.1)',
     cursor: 'pointer',
   },
   emptyState: {
-    border: '1px dashed rgba(217,178,78,0.3)',
+    border: '1px dashed rgba(0,202,255,0.3)',
     borderRadius: '16px',
     padding: '18px',
     display: 'flex',
@@ -403,12 +403,12 @@ const styles = {
   },
   emptyTitle: {
     margin: 0,
-    color: '#fff4c8',
+    color: '#f5fbff',
     fontWeight: 700,
   },
   emptyText: {
     margin: 0,
-    color: '#c6b26b',
+    color: '#8faec3',
   },
 }
 
